@@ -1,0 +1,115 @@
+@page "/distribuidores"
+@attribute [Authorize(Roles = "Admin")]
+@inject ApiClient Api
+
+<PageTitle>Distribuidores</PageTitle>
+
+<div class="page-header"><div class="page-icon"><i class="bi bi-truck"></i></div><div><h1>Distribuidores</h1><p>Proveedores de medicamentos</p></div></div>
+
+@if (_ok != null) { <div class="alert alert-success">@_ok</div> }
+@if (_error != null) { <div class="alert alert-danger">@_error</div> }
+
+<div class="row g-3">
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header">@(_form.Id == 0 ? "Nuevo distribuidor" : "Editar distribuidor")</div>
+            <div class="card-body">
+                <div class="mb-2"><label class="form-label small mb-1">Razón social</label><input class="form-control" @bind="_form.RazonSocial" /></div>
+                <div class="mb-2"><label class="form-label small mb-1">CUIT</label><input class="form-control" @bind="_form.Cuit" /></div>
+                <div class="mb-2"><label class="form-label small mb-1">Teléfono</label><input class="form-control" @bind="_form.Telefono" /></div>
+                <div class="mb-2"><label class="form-label small mb-1">Email</label><input type="email" class="form-control" @bind="_form.Email" /></div>
+                <div class="mb-3"><label class="form-label small mb-1">Dirección</label><input class="form-control" @bind="_form.Direccion" /></div>
+                <button class="btn btn-primary" @onclick="Guardar">Guardar</button>
+                @if (_form.Id != 0)
+                {
+                    <button class="btn btn-outline-secondary ms-2" @onclick="() => _form = new()">Cancelar</button>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-8">
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle">
+                <thead><tr><th>Razón social</th><th>CUIT</th><th>Contacto</th><th>Estado</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var d in _lista)
+                    {
+                        <tr>
+                            <td>@d.RazonSocial</td>
+                            <td>@d.Cuit</td>
+                            <td class="small">@d.Telefono<br /><span class="text-muted">@d.Email</span></td>
+                            <td><span class="badge @(d.Activo ? "bg-success" : "bg-secondary")">@(d.Activo ? "Activo" : "Inactivo")</span></td>
+                            <td class="text-end text-nowrap">
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => Editar(d)">Editar</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => CambiarEstado(d)">@(d.Activo ? "Desactivar" : "Activar")</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Distribuidor> _lista = new();
+    private Distribuidor _form = new();
+    private string? _ok;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => Cargar();
+
+    private async Task Cargar()
+    {
+        var r = await Api.GetDistribuidoresAsync(incluirInactivos: true);
+        if (r.Ok && r.Datos != null) _lista = r.Datos; else _error = r.Error;
+    }
+
+    private void Editar(Distribuidor d) => _form = new Distribuidor
+    {
+        Id = d.Id, RazonSocial = d.RazonSocial, Cuit = d.Cuit, Telefono = d.Telefono, Email = d.Email, Direccion = d.Direccion
+    };
+
+    private async Task Guardar()
+    {
+        _ok = _error = null;
+
+        if (string.IsNullOrWhiteSpace(_form.RazonSocial))
+        {
+            _error = "La razón social es obligatoria.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_form.Email)) _form.Email = null;
+
+        string? error;
+
+        if (_form.Id == 0)
+        {
+            var r = await Api.CrearDistribuidorAsync(_form);
+            error = r.Ok ? null : r.Error;
+        }
+        else
+        {
+            var r = await Api.EditarDistribuidorAsync(_form.Id, _form);
+            error = r.Ok ? null : r.Error;
+        }
+
+        if (error == null)
+        {
+            _ok = "Distribuidor guardado.";
+            _form = new();
+            await Cargar();
+        }
+        else
+        {
+            _error = error;
+        }
+    }
+
+    private async Task CambiarEstado(Distribuidor d)
+    {
+        var r = await Api.CambiarEstadoDistribuidorAsync(d.Id, !d.Activo);
+        if (r.Ok) await Cargar(); else _error = r.Error;
+    }
+}

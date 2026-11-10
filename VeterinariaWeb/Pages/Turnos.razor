@@ -1,0 +1,296 @@
+@page "/turnos"
+@attribute [Authorize(Roles = "Admin,Recepcionista")]
+@inject ApiClient Api
+
+<PageTitle>Turnos</PageTitle>
+
+<div class="page-header"><div class="page-icon"><i class="bi bi-calendar-week"></i></div><div><h1>Turnos</h1><p>Agendar, cancelar y reprogramar (cada turno dura @DuracionMinutos minutos)</p></div></div>
+
+@if (_ok != null) { <div class="alert alert-success">@_ok</div> }
+@if (_error != null) { <div class="alert alert-danger">@_error</div> }
+
+<div class="row g-3">
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header">Agendar turno</div>
+            <div class="card-body">
+                <label class="form-label small mb-1">Mascota</label>
+                @if (_mascota != null)
+                {
+                    <div class="d-flex justify-content-between align-items-center border rounded-3 px-2 py-1 mb-2">
+                        <span>@(_mascota.Especie == "Gato" ? "🐱" : "🐶") @_mascota.Nombre <small class="text-muted">(@_mascota.DuenoNombre)</small></span>
+                        <button class="btn btn-sm btn-link" @onclick="() => _mascota = null">Cambiar</button>
+                    </div>
+                }
+                else
+                {
+                    <input class="form-control mb-1" placeholder="Buscar mascota o dueño..." value="@_buscarMascota" @oninput="AlBuscarMascota" />
+                    <div class="list-group mb-2">
+                        @foreach (var m in _mascotasEncontradas)
+                        {
+                            <button class="list-group-item list-group-item-action py-1 small" @onclick="() => _mascota = m">@m.Nombre (@m.Especie) · @m.DuenoNombre</button>
+                        }
+                    </div>
+                }
+
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Especialidad</label>
+                    <select class="form-select" @bind="_especialidadId" @bind:after="FiltrarVeterinarios">
+                        <option value="0">Todas</option>
+                        @foreach (var e in _especialidades)
+                        {
+                            <option value="@e.Id">@e.Nombre</option>
+                        }
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Veterinario</label>
+                    <select class="form-select" @bind="_nuevo.VeterinarioId">
+                        <option value="0">Seleccionar...</option>
+                        @foreach (var v in _veterinariosFiltrados)
+                        {
+                            <option value="@v.Id">@v.Nombre (@v.EspecialidadNombre)</option>
+                        }
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Fecha y hora</label>
+                    <input type="datetime-local" class="form-control" @bind="_nuevo.FechaHora" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small mb-1">Motivo</label>
+                    <input class="form-control" placeholder="Ej: control anual, vacunación..." @bind="_nuevo.Motivo" />
+                </div>
+                <button class="btn btn-primary" disabled="@_procesando" @onclick="Agendar">Agendar turno</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="row g-2 mb-2 align-items-end">
+            <div class="col-sm-4">
+                <label class="form-label small mb-1">Día</label>
+                <input type="date" class="form-control" @bind="_dia" @bind:after="Cargar" />
+            </div>
+            <div class="col-sm-4">
+                <label class="form-label small mb-1">Veterinario</label>
+                <select class="form-select" @bind="_filtroVeterinario" @bind:after="Cargar">
+                    <option value="0">Todos</option>
+                    @foreach (var v in _veterinarios)
+                    {
+                        <option value="@v.Id">@v.Nombre</option>
+                    }
+                </select>
+            </div>
+            <div class="col-sm-4">
+                <label class="form-label small mb-1">Estado</label>
+                <select class="form-select" @bind="_filtroEstado" @bind:after="Cargar">
+                    <option value="">Todos</option>
+                    <option value="Pendiente">Pendiente</option>
+                    <option value="Atendido">Atendido</option>
+                    <option value="Cancelado">Cancelado</option>
+                </select>
+            </div>
+        </div>
+
+        @if (_turnos.Count == 0)
+        {
+            <div class="empty-state py-4"><i class="bi bi-calendar-x"></i><p>No hay turnos para este día.</p></div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead><tr><th>Hora</th><th>Mascota</th><th>Dueño</th><th>Veterinario</th><th>Estado</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var t in _turnos)
+                        {
+                            <tr>
+                                <td class="fw-semibold">@t.FechaHora.ToString("HH:mm")</td>
+                                <td>@t.MascotaNombre <small class="d-block text-muted">@t.Motivo</small></td>
+                                <td class="small">@t.DuenoNombre<br /><span class="text-muted">@t.DuenoTelefono</span></td>
+                                <td class="small">@t.VeterinarioNombre<br /><span class="text-muted">@t.EspecialidadNombre</span></td>
+                                <td><span class="badge estado-@t.Estado">@t.Estado</span></td>
+                                <td class="text-end text-nowrap">
+                                    @if (t.Estado == "Pendiente")
+                                    {
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => AbrirReprogramar(t)">Reprogramar</button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => Cancelar(t)">Cancelar</button>
+                                    }
+                                </td>
+                            </tr>
+                            @if (_reprogramando?.Id == t.Id)
+                            {
+                                <tr>
+                                    <td colspan="6">
+                                        <div class="d-flex flex-wrap gap-2 align-items-center">
+                                            <span class="small">Nuevo horario:</span>
+                                            <input type="datetime-local" class="form-control form-control-sm" style="max-width:220px" @bind="_nuevaFecha" />
+                                            <button class="btn btn-sm btn-primary" @onclick="ConfirmarReprogramar">Confirmar</button>
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => _reprogramando = null">Cerrar</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private const int DuracionMinutos = 30;
+
+    // turnos?mascotaId=7 deja la mascota elegida (viene del botón "Turno" en Mascotas)
+    [SupplyParameterFromQuery] public int? MascotaId { get; set; }
+
+    private readonly Debouncer _debounce = new();
+    private List<Turno> _turnos = new();
+    private List<Veterinario> _veterinarios = new();
+    private List<Veterinario> _veterinariosFiltrados = new();
+    private List<Especialidad> _especialidades = new();
+    private List<Mascota> _mascotasEncontradas = new();
+    private Mascota? _mascota;
+    private TurnoRequest _nuevo = new() { FechaHora = ProximaMediaHora() };
+    private int _especialidadId;
+    private string _buscarMascota = string.Empty;
+    private DateTime _dia = DateTime.Today;
+    private int _filtroVeterinario;
+    private string _filtroEstado = string.Empty;
+    private Turno? _reprogramando;
+    private DateTime _nuevaFecha;
+    private string? _ok;
+    private string? _error;
+    private bool _procesando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var v = await Api.GetVeterinariosAsync();
+        if (v.Ok && v.Datos != null) _veterinarios = _veterinariosFiltrados = v.Datos;
+
+        var e = await Api.GetEspecialidadesAsync();
+        if (e.Ok && e.Datos != null) _especialidades = e.Datos;
+
+        if (MascotaId != null)
+        {
+            var m = await Api.GetMascotaAsync(MascotaId.Value);
+            _mascota = m.Ok ? m.Datos : null;
+        }
+
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        var r = await Api.GetTurnosAsync(_dia, _dia, _filtroVeterinario == 0 ? null : _filtroVeterinario,
+            string.IsNullOrEmpty(_filtroEstado) ? null : _filtroEstado);
+
+        if (r.Ok && r.Datos != null) _turnos = r.Datos; else _error = r.Error;
+    }
+
+    private void FiltrarVeterinarios()
+    {
+        _veterinariosFiltrados = _especialidadId == 0
+            ? _veterinarios
+            : _veterinarios.Where(v => v.EspecialidadId == _especialidadId).ToList();
+
+        if (_veterinariosFiltrados.All(v => v.Id != _nuevo.VeterinarioId)) _nuevo.VeterinarioId = 0;
+    }
+
+    private async Task AlBuscarMascota(ChangeEventArgs e)
+    {
+        _buscarMascota = e.Value?.ToString() ?? string.Empty;
+
+        await _debounce.EjecutarAsync(async () =>
+        {
+            if (_buscarMascota.Trim().Length < 2)
+            {
+                _mascotasEncontradas = new();
+                return;
+            }
+
+            var r = await Api.GetMascotasAsync(_buscarMascota, 1, 6);
+            _mascotasEncontradas = r.Datos?.Datos ?? new();
+        });
+    }
+
+    private async Task Agendar()
+    {
+        _ok = _error = null;
+
+        if (_mascota == null || _nuevo.VeterinarioId == 0)
+        {
+            _error = "Elegí la mascota y el veterinario.";
+            return;
+        }
+
+        _nuevo.MascotaId = _mascota.Id;
+        _procesando = true;
+        var r = await Api.CrearTurnoAsync(_nuevo);
+        _procesando = false;
+
+        if (r.Ok)
+        {
+            _ok = $"Turno agendado para {_mascota.Nombre} el {_nuevo.FechaHora:dd/MM/yyyy} a las {_nuevo.FechaHora:HH:mm}.";
+            _dia = _nuevo.FechaHora.Date;
+            _mascota = null;
+            _nuevo = new TurnoRequest { FechaHora = ProximaMediaHora() };
+            await Cargar();
+        }
+        else
+        {
+            _error = r.Error;
+        }
+    }
+
+    private void AbrirReprogramar(Turno t)
+    {
+        _reprogramando = t;
+        _nuevaFecha = t.FechaHora;
+    }
+
+    private async Task ConfirmarReprogramar()
+    {
+        _ok = _error = null;
+        if (_reprogramando == null) return;
+
+        var r = await Api.ReprogramarTurnoAsync(_reprogramando.Id, new ReprogramarRequest { FechaHora = _nuevaFecha });
+
+        if (r.Ok)
+        {
+            _ok = $"Turno de {_reprogramando.MascotaNombre} reprogramado al {_nuevaFecha:dd/MM HH:mm}.";
+            _reprogramando = null;
+            await Cargar();
+        }
+        else
+        {
+            _error = r.Error;
+        }
+    }
+
+    private async Task Cancelar(Turno t)
+    {
+        _ok = _error = null;
+
+        var r = await Api.CancelarTurnoAsync(t.Id);
+
+        if (r.Ok)
+        {
+            _ok = $"Turno de {t.MascotaNombre} cancelado.";
+            await Cargar();
+        }
+        else
+        {
+            _error = r.Error;
+        }
+    }
+
+    private static DateTime ProximaMediaHora()
+    {
+        var ahora = DateTime.Now;
+        var minutos = ahora.Minute < 30 ? 30 : 60;
+        return new DateTime(ahora.Year, ahora.Month, ahora.Day, ahora.Hour, 0, 0).AddMinutes(minutos);
+    }
+}

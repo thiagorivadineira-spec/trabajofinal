@@ -1,0 +1,75 @@
+@page "/perfil"
+@inject ApiMovil Api
+@inject SesionMovil Sesion
+
+<h2 class="seccion-titulo">Mi perfil</h2>
+
+@if (_perfil != null)
+{
+    <div class="tarjeta">
+        <div class="fw-bold fs-5">@_perfil.NombreCompleto</div>
+        <div class="small text-muted mb-2">Usuario: @_perfil.Username</div>
+        <div class="small"><i class="bi bi-person-vcard"></i> DNI @_perfil.Dni</div>
+        <div class="small"><i class="bi bi-telephone"></i> @(_perfil.Telefono ?? "-")</div>
+        <div class="small"><i class="bi bi-envelope"></i> @(_perfil.Email ?? "-")</div>
+        <div class="small"><i class="bi bi-geo-alt"></i> @(_perfil.Direccion ?? "-")</div>
+        <div class="small text-muted mt-2">Para cambiar tus datos, avisá en la recepción.</div>
+    </div>
+}
+else if (_error != null)
+{
+    <div class="alert alert-danger small">@_error</div>
+}
+
+<div class="tarjeta">
+    <div class="fw-semibold mb-2">Cambiar contraseña</div>
+    @if (_ok != null) { <div class="alert alert-success py-1 small">@_ok</div> }
+    @if (_errorPass != null) { <div class="alert alert-danger py-1 small">@_errorPass</div> }
+    <input type="password" class="form-control mb-2" placeholder="Contraseña actual" @bind="_actual" />
+    <input type="password" class="form-control mb-2" placeholder="Nueva (mínimo 6)" @bind="_nueva" />
+    <button class="btn btn-volki w-100" @onclick="CambiarPassword">Guardar</button>
+</div>
+
+<button class="btn btn-outline-secondary w-100 mt-2" @onclick="CerrarSesion">
+    <i class="bi bi-box-arrow-right"></i> Cerrar sesión
+</button>
+
+@code {
+    private Perfil? _perfil;
+    private string? _error;
+    private string _actual = string.Empty;
+    private string _nueva = string.Empty;
+    private string? _ok;
+    private string? _errorPass;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var r = await Api.GetPerfilAsync();
+        if (r.Ok) _perfil = r.Datos; else _error = r.Error;
+    }
+
+    private async Task CambiarPassword()
+    {
+        _ok = _errorPass = null;
+
+        if (_nueva.Length < 6)
+        {
+            _errorPass = "La contraseña nueva debe tener al menos 6 caracteres.";
+            return;
+        }
+
+        var r = await Api.CambiarPasswordAsync(_actual, _nueva);
+
+        if (r.Ok)
+        {
+            _ok = "Contraseña actualizada.";
+            _actual = _nueva = string.Empty;
+        }
+        else
+        {
+            _errorPass = r.Error;
+        }
+    }
+
+    private Task CerrarSesion() => Sesion.CerrarAsync();
+}

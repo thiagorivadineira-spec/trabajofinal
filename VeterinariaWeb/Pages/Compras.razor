@@ -1,0 +1,219 @@
+@page "/compras"
+@attribute [Authorize(Roles = "Admin")]
+@inject ApiClient Api
+
+<PageTitle>Compras</PageTitle>
+
+<div class="page-header"><div class="page-icon"><i class="bi bi-box-arrow-in-down"></i></div><div><h1>Compras a distribuidores</h1><p>Al registrar la compra el stock de cada medicamento se actualiza automáticamente</p></div></div>
+
+@if (_ok != null) { <div class="alert alert-success">@_ok</div> }
+@if (_error != null) { <div class="alert alert-danger">@_error</div> }
+
+<div class="row g-3">
+    <div class="col-lg-5">
+        <div class="mb-3">
+            <label class="form-label">Distribuidor</label>
+            <select class="form-select" @bind="_distribuidorId">
+                <option value="0">Seleccionar distribuidor...</option>
+                @foreach (var d in _distribuidores)
+                {
+                    <option value="@d.Id">@d.RazonSocial</option>
+                }
+            </select>
+        </div>
+
+        <label class="form-label">Buscar medicamento</label>
+        <input class="form-control mb-2" placeholder="Nombre del medicamento..." value="@_busqueda" @oninput="AlBuscar" />
+
+        <ul class="list-group">
+            @foreach (var m in _resultados)
+            {
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        @m.Nombre <small class="text-muted">@m.Presentacion</small>
+                        <small class="text-muted d-block">Stock actual: @m.StockActual</small>
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary" @onclick="() => Agregar(m)">Agregar</button>
+                </li>
+            }
+        </ul>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card shadow-sm">
+            <div class="card-header fw-semibold">Medicamentos de la compra</div>
+            <div class="card-body">
+                @if (_lineas.Count == 0)
+                {
+                    <p class="text-muted mb-0">Agregá los medicamentos que llegaron del distribuidor.</p>
+                }
+                else
+                {
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Medicamento</th>
+                                <th class="text-end">Stock</th>
+                                <th style="width:100px">Cantidad</th>
+                                <th style="width:130px">Costo unitario</th>
+                                <th class="text-end">Subtotal</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var l in _lineas)
+                            {
+                                <tr>
+                                    <td>@l.Medicamento.Nombre</td>
+                                    <td class="text-end">@l.Medicamento.StockActual</td>
+                                    <td><input type="number" min="1" class="form-control form-control-sm" @bind="l.Cantidad" /></td>
+                                    <td><input type="number" min="0" step="0.01" class="form-control form-control-sm" @bind="l.PrecioUnitario" /></td>
+                                    <td class="text-end">@Formato.Dinero(l.Subtotal)</td>
+                                    <td><button class="btn btn-sm btn-outline-danger" @onclick="() => Quitar(l)">✕</button></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+
+                    <div class="d-flex justify-content-between align-items-center fs-5 mb-3">
+                        <span>Total de la compra</span>
+                        <strong>@Formato.Dinero(_lineas.Sum(l => l.Subtotal))</strong>
+                    </div>
+
+                    <button class="btn btn-success" disabled="@_procesando" @onclick="Registrar">
+                        @(_procesando ? "Registrando..." : "Registrar compra")
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<h2 class="h6 text-uppercase text-muted mt-4 mb-2" style="letter-spacing:.06em">Últimas compras</h2>
+
+<div class="table-responsive">
+    <table class="table table-sm align-middle">
+        <thead><tr><th>#</th><th>Fecha</th><th>Distribuidor</th><th>Detalle</th><th>Registró</th><th class="text-end">Total</th></tr></thead>
+        <tbody>
+            @foreach (var c in _compras)
+            {
+                <tr>
+                    <td>@c.Id</td>
+                    <td class="text-nowrap">@Formato.Fecha(c.Fecha)</td>
+                    <td>@c.DistribuidorNombre</td>
+                    <td class="small">@(string.Join(", ", c.Detalles.Select(d => $"{d.MedicamentoNombre} x{d.Cantidad}")))</td>
+                    <td>@c.UsuarioNombre</td>
+                    <td class="text-end">@Formato.Dinero(c.Total)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+<Paginador Pagina="_pagina" TotalPaginas="_totalPaginas" AlCambiar="CargarCompras" />
+
+@code {
+    private readonly Debouncer _debounce = new();
+    private readonly List<LineaCompra> _lineas = new();
+
+    private List<Distribuidor> _distribuidores = new();
+    private List<Medicamento> _resultados = new();
+    private List<Compra> _compras = new();
+    private int _distribuidorId;
+    private string _busqueda = string.Empty;
+    private int _pagina = 1;
+    private int _totalPaginas;
+    private string? _ok;
+    private string? _error;
+    private bool _procesando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var d = await Api.GetDistribuidoresAsync();
+        if (d.Ok && d.Datos != null) _distribuidores = d.Datos; else _error = d.Error;
+
+        await Buscar();
+        await CargarCompras(1);
+    }
+
+    private async Task Buscar()
+    {
+        var r = await Api.GetMedicamentosAsync(_busqueda);
+        if (r.Ok && r.Datos != null) _resultados = r.Datos.Take(8).ToList(); else _error = r.Error;
+    }
+
+    private async Task CargarCompras(int pagina)
+    {
+        var r = await Api.GetComprasAsync(pagina, 10);
+        if (r.Ok && r.Datos != null)
+        {
+            _compras = r.Datos.Datos;
+            _pagina = r.Datos.PaginaActual;
+            _totalPaginas = r.Datos.TotalPaginas;
+        }
+    }
+
+    private async Task AlBuscar(ChangeEventArgs e)
+    {
+        _busqueda = e.Value?.ToString() ?? string.Empty;
+        await _debounce.EjecutarAsync(Buscar);
+    }
+
+    private void Agregar(Medicamento medicamento)
+    {
+        _ok = _error = null;
+
+        var existente = _lineas.FirstOrDefault(l => l.Medicamento.Id == medicamento.Id);
+
+        if (existente != null) existente.Cantidad++;
+        else _lineas.Add(new LineaCompra { Medicamento = medicamento, Cantidad = 1, PrecioUnitario = 0 });
+    }
+
+    private void Quitar(LineaCompra linea) => _lineas.Remove(linea);
+
+    private async Task Registrar()
+    {
+        _ok = _error = null;
+
+        if (_distribuidorId == 0)
+        {
+            _error = "Seleccioná un distribuidor.";
+            return;
+        }
+
+        if (_lineas.Any(l => l.Cantidad <= 0 || l.PrecioUnitario <= 0))
+        {
+            _error = "Cada medicamento debe tener cantidad y costo unitario mayores a cero.";
+            return;
+        }
+
+        _procesando = true;
+
+        var pedido = new CompraRequest
+        {
+            DistribuidorId = _distribuidorId,
+            Detalles = _lineas.Select(l => new DetalleCompraRequest
+            {
+                MedicamentoId = l.Medicamento.Id,
+                Cantidad = l.Cantidad,
+                PrecioUnitario = l.PrecioUnitario
+            }).ToList()
+        };
+
+        var r = await Api.CrearCompraAsync(pedido);
+
+        if (r.Ok && r.Datos != null)
+        {
+            _ok = $"Compra #{r.Datos.CompraId} registrada por {Formato.Dinero(r.Datos.Total)}. El stock fue actualizado.";
+            _lineas.Clear();
+            _distribuidorId = 0;
+            await Buscar();
+            await CargarCompras(1);
+        }
+        else
+        {
+            _error = r.Error;
+        }
+
+        _procesando = false;
+    }
+}

@@ -1,0 +1,215 @@
+@page "/duenos"
+@attribute [Authorize(Roles = "Admin,Recepcionista")]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Dueños</PageTitle>
+
+<div class="page-header"><div class="page-icon"><i class="bi bi-person-vcard"></i></div><div><h1>Dueños</h1><p>Registrá dueños y creales la cuenta para la app móvil</p></div></div>
+
+@if (_ok != null) { <div class="alert alert-success">@_ok</div> }
+@if (_error != null) { <div class="alert alert-danger">@_error</div> }
+
+<div class="row g-3">
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header">@(_editandoId == null ? "Registrar dueño" : "Editar dueño")</div>
+            <div class="card-body">
+                <div class="mb-2"><label class="form-label small mb-1">DNI</label><input class="form-control" @bind="_form.Dni" /></div>
+                <div class="row g-2 mb-2">
+                    <div class="col"><label class="form-label small mb-1">Nombre</label><input class="form-control" @bind="_form.Nombre" /></div>
+                    <div class="col"><label class="form-label small mb-1">Apellido</label><input class="form-control" @bind="_form.Apellido" /></div>
+                </div>
+                <div class="mb-2"><label class="form-label small mb-1">Teléfono</label><input class="form-control" @bind="_form.Telefono" /></div>
+                <div class="mb-2"><label class="form-label small mb-1">Email</label><input type="email" class="form-control" @bind="_form.Email" /></div>
+                <div class="mb-2"><label class="form-label small mb-1">Dirección</label><input class="form-control" @bind="_form.Direccion" /></div>
+
+                @if (_editandoId == null)
+                {
+                    <div class="seccion-form">
+                        <div class="small fw-semibold mb-1"><i class="bi bi-phone"></i> Cuenta para la app (opcional)</div>
+                        <div class="row g-2">
+                            <div class="col"><input class="form-control form-control-sm" placeholder="Usuario" @bind="_form.Username" autocomplete="off" /></div>
+                            <div class="col"><input type="password" class="form-control form-control-sm" placeholder="Contraseña" @bind="_form.Password" autocomplete="new-password" /></div>
+                        </div>
+                    </div>
+                }
+
+                <button class="btn btn-primary" disabled="@_procesando" @onclick="Guardar">Guardar</button>
+                @if (_editandoId != null)
+                {
+                    <button class="btn btn-outline-secondary ms-2" @onclick="Limpiar">Cancelar</button>
+                }
+            </div>
+        </div>
+
+        @if (_cuentaPara != null)
+        {
+            <div class="card shadow-sm mt-3">
+                <div class="card-header">Crear cuenta de app para @_cuentaPara.NombreCompleto</div>
+                <div class="card-body">
+                    <input class="form-control mb-2" placeholder="Usuario" @bind="_cuenta.Username" autocomplete="off" />
+                    <input type="password" class="form-control mb-2" placeholder="Contraseña (mínimo 6)" @bind="_cuenta.Password" autocomplete="new-password" />
+                    <button class="btn btn-primary" @onclick="CrearCuenta">Crear cuenta</button>
+                    <button class="btn btn-outline-secondary ms-2" @onclick="() => _cuentaPara = null">Cancelar</button>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="col-lg-8">
+        <input class="form-control mb-2" placeholder="Buscar por DNI, nombre, apellido o teléfono..." value="@_buscar" @oninput="AlBuscar" />
+
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle">
+                <thead><tr><th>Dueño</th><th>DNI</th><th>Contacto</th><th class="text-center">Mascotas</th><th>App</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var d in _lista)
+                    {
+                        <tr>
+                            <td>@d.NombreCompleto</td>
+                            <td>@d.Dni</td>
+                            <td class="small">@d.Telefono<br /><span class="text-muted">@d.Email</span></td>
+                            <td class="text-center">@d.CantidadMascotas</td>
+                            <td>
+                                @if (d.TieneCuenta)
+                                {
+                                    <span class="badge bg-success" title="@d.Username">Con cuenta</span>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline-primary" @onclick="() => AbrirCuenta(d)">Crear cuenta</button>
+                                }
+                            </td>
+                            <td class="text-end text-nowrap">
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => Editar(d)">Editar</button>
+                                <button class="btn btn-sm btn-primary" @onclick="@(() => Nav.NavigateTo($"mascotas?duenoId={d.Id}"))"><i class="bi bi-heart"></i> Mascotas</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="small text-muted mt-2">@_total dueño(s).</p>
+        <Paginador Pagina="_pagina" TotalPaginas="_totalPaginas" AlCambiar="Cargar" />
+    </div>
+</div>
+
+@code {
+    private readonly Debouncer _debounce = new();
+    private List<Dueno> _lista = new();
+    private DuenoRequest _form = new();
+    private int? _editandoId;
+    private Dueno? _cuentaPara;
+    private CuentaRequest _cuenta = new();
+    private string _buscar = string.Empty;
+    private int _pagina = 1;
+    private int _totalPaginas;
+    private int _total;
+    private string? _ok;
+    private string? _error;
+    private bool _procesando;
+
+    protected override Task OnInitializedAsync() => Cargar(1);
+
+    private async Task Cargar(int pagina)
+    {
+        var r = await Api.GetDuenosAsync(_buscar, pagina, 10);
+        if (r.Ok && r.Datos != null)
+        {
+            _lista = r.Datos.Datos;
+            _pagina = r.Datos.PaginaActual;
+            _totalPaginas = r.Datos.TotalPaginas;
+            _total = r.Datos.TotalRegistros;
+        }
+        else
+        {
+            _error = r.Error;
+        }
+    }
+
+    private async Task AlBuscar(ChangeEventArgs e)
+    {
+        _buscar = e.Value?.ToString() ?? string.Empty;
+        await _debounce.EjecutarAsync(() => Cargar(1));
+    }
+
+    private void Editar(Dueno d)
+    {
+        _ok = _error = null;
+        _editandoId = d.Id;
+        _form = new DuenoRequest { Dni = d.Dni, Nombre = d.Nombre, Apellido = d.Apellido, Telefono = d.Telefono, Email = d.Email, Direccion = d.Direccion };
+    }
+
+    private void Limpiar()
+    {
+        _editandoId = null;
+        _form = new DuenoRequest();
+    }
+
+    private async Task Guardar()
+    {
+        _ok = _error = null;
+
+        if (string.IsNullOrWhiteSpace(_form.Dni) || string.IsNullOrWhiteSpace(_form.Nombre) || string.IsNullOrWhiteSpace(_form.Apellido))
+        {
+            _error = "DNI, nombre y apellido son obligatorios.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_form.Email)) _form.Email = null;
+        if (string.IsNullOrWhiteSpace(_form.Username)) { _form.Username = null; _form.Password = null; }
+
+        _procesando = true;
+        string? error;
+
+        if (_editandoId == null)
+        {
+            var r = await Api.CrearDuenoAsync(_form);
+            error = r.Ok ? null : r.Error;
+        }
+        else
+        {
+            var r = await Api.EditarDuenoAsync(_editandoId.Value, _form);
+            error = r.Ok ? null : r.Error;
+        }
+
+        _procesando = false;
+
+        if (error == null)
+        {
+            _ok = $"Dueño {_form.Apellido}, {_form.Nombre} guardado. Ahora podés cargarle sus mascotas.";
+            Limpiar();
+            await Cargar(_pagina);
+        }
+        else
+        {
+            _error = error;
+        }
+    }
+
+    private void AbrirCuenta(Dueno d)
+    {
+        _cuentaPara = d;
+        _cuenta = new CuentaRequest { Username = d.Dni };
+    }
+
+    private async Task CrearCuenta()
+    {
+        _ok = _error = null;
+        if (_cuentaPara == null) return;
+
+        var r = await Api.CrearCuentaDuenoAsync(_cuentaPara.Id, _cuenta);
+
+        if (r.Ok)
+        {
+            _ok = r.Datos?.Mensaje ?? "Cuenta creada.";
+            _cuentaPara = null;
+            await Cargar(_pagina);
+        }
+        else
+        {
+            _error = r.Error;
+        }
+    }
+}

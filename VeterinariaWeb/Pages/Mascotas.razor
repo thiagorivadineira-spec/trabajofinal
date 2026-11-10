@@ -1,0 +1,260 @@
+@page "/mascotas"
+@attribute [Authorize(Roles = "Admin,Recepcionista,Veterinario")]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Mascotas</PageTitle>
+
+<div class="page-header"><div class="page-icon"><i class="bi bi-search-heart"></i></div><div><h1>Mascotas</h1><p>Buscá por nombre de la mascota o por nombre / DNI del dueño</p></div></div>
+
+@if (_ok != null) { <div class="alert alert-success">@_ok</div> }
+@if (_error != null) { <div class="alert alert-danger">@_error</div> }
+
+<div class="row g-3">
+    <AuthorizeView Roles="Admin,Recepcionista" Context="recepcion">
+        <div class="col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-header">@(_editandoId == null ? "Registrar mascota" : "Editar mascota")</div>
+                <div class="card-body">
+                    <label class="form-label small mb-1">Dueño</label>
+                    @if (_duenoElegido != null)
+                    {
+                        <div class="d-flex justify-content-between align-items-center border rounded-3 px-2 py-1 mb-2">
+                            <span><i class="bi bi-person"></i> @_duenoElegido.NombreCompleto <small class="text-muted">DNI @_duenoElegido.Dni</small></span>
+                            <button class="btn btn-sm btn-link" @onclick="() => _duenoElegido = null">Cambiar</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <input class="form-control mb-1" placeholder="Buscar dueño por DNI o apellido..." value="@_buscarDueno" @oninput="AlBuscarDueno" />
+                        <div class="list-group mb-2">
+                            @foreach (var d in _duenosEncontrados)
+                            {
+                                <button class="list-group-item list-group-item-action py-1 small" @onclick="() => _duenoElegido = d">@d.NombreCompleto · DNI @d.Dni</button>
+                            }
+                        </div>
+                    }
+
+                    <div class="mb-2"><label class="form-label small mb-1">Nombre</label><input class="form-control" @bind="_form.Nombre" /></div>
+                    <div class="row g-2 mb-2">
+                        <div class="col">
+                            <label class="form-label small mb-1">Especie</label>
+                            <select class="form-select" @bind="_form.Especie">
+                                <option value="Perro">Perro</option>
+                                <option value="Gato">Gato</option>
+                            </select>
+                        </div>
+                        <div class="col">
+                            <label class="form-label small mb-1">Sexo</label>
+                            <select class="form-select" @bind="_form.Sexo">
+                                <option value="">-</option>
+                                <option value="Macho">Macho</option>
+                                <option value="Hembra">Hembra</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-2"><label class="form-label small mb-1">Raza</label><input class="form-control" @bind="_form.Raza" /></div>
+                    <div class="row g-2 mb-3">
+                        <div class="col"><label class="form-label small mb-1">Nacimiento</label><input type="date" class="form-control" @bind="_form.FechaNacimiento" /></div>
+                        <div class="col"><label class="form-label small mb-1">Peso (kg)</label><input type="number" step="0.1" min="0" class="form-control" @bind="_form.Peso" /></div>
+                    </div>
+                    <button class="btn btn-primary" disabled="@_procesando" @onclick="Guardar">Guardar</button>
+                    @if (_editandoId != null)
+                    {
+                        <button class="btn btn-outline-secondary ms-2" @onclick="Limpiar">Cancelar</button>
+                    }
+                </div>
+            </div>
+        </div>
+    </AuthorizeView>
+
+    <div class="col">
+        <div class="d-flex gap-2 mb-2">
+            <input class="form-control" placeholder="Buscar mascota o dueño..." value="@_buscar" @oninput="AlBuscar" />
+            @if (DuenoId != null)
+            {
+                <button class="btn btn-outline-secondary text-nowrap" @onclick="@(() => Nav.NavigateTo("mascotas"))">Ver todas</button>
+            }
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle">
+                <thead><tr><th>Mascota</th><th>Especie / raza</th><th>Edad</th><th>Dueño</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var m in _lista)
+                    {
+                        <tr>
+                            <td class="fw-semibold">@(m.Especie == "Gato" ? "🐱" : "🐶") @m.Nombre</td>
+                            <td>@m.Especie <small class="text-muted">@m.Raza</small></td>
+                            <td class="small">@Edad(m.FechaNacimiento)</td>
+                            <td class="small">@m.DuenoNombre<br /><span class="text-muted">@m.DuenoTelefono</span></td>
+                            <td class="text-end text-nowrap">
+                                <AuthorizeView Roles="Admin,Recepcionista" Context="r1">
+                                    <button class="btn btn-sm btn-outline-primary" @onclick="() => Editar(m)">Editar</button>
+                                    <button class="btn btn-sm btn-primary" @onclick="@(() => Nav.NavigateTo($"turnos?mascotaId={m.Id}"))"><i class="bi bi-calendar-plus"></i> Turno</button>
+                                </AuthorizeView>
+                                <AuthorizeView Roles="Admin,Veterinario" Context="r2">
+                                    <button class="btn btn-sm btn-outline-primary" @onclick="@(() => Nav.NavigateTo($"ficha/{m.Id}"))"><i class="bi bi-file-medical"></i> Ficha</button>
+                                </AuthorizeView>
+                                <AuthorizeView Roles="Veterinario" Context="r3">
+                                    <button class="btn btn-sm btn-primary" @onclick="@(() => Nav.NavigateTo($"atencion/{m.Id}"))"><i class="bi bi-clipboard2-pulse"></i> Atender</button>
+                                </AuthorizeView>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="small text-muted mt-2">@_total mascota(s).</p>
+        <Paginador Pagina="_pagina" TotalPaginas="_totalPaginas" AlCambiar="Cargar" />
+    </div>
+</div>
+
+@code {
+    // mascotas?duenoId=5 muestra solo las mascotas de ese dueño y lo deja elegido en el formulario
+    [SupplyParameterFromQuery] public int? DuenoId { get; set; }
+
+    private readonly Debouncer _debounce = new();
+    private readonly Debouncer _debounceDueno = new();
+    private List<Mascota> _lista = new();
+    private List<Dueno> _duenosEncontrados = new();
+    private Dueno? _duenoElegido;
+    private MascotaRequest _form = new();
+    private int? _editandoId;
+    private string _buscar = string.Empty;
+    private string _buscarDueno = string.Empty;
+    private int _pagina = 1;
+    private int _totalPaginas;
+    private int _total;
+    private string? _ok;
+    private string? _error;
+    private bool _procesando;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _duenoElegido = null;
+
+        if (DuenoId != null)
+        {
+            // Se deja el dueño preseleccionado en el formulario (si falla, se elige a mano)
+            var d = await Api.GetDuenoAsync(DuenoId.Value);
+            _duenoElegido = d.Ok ? d.Datos : null;
+        }
+
+        await Cargar(1);
+    }
+
+    private async Task Cargar(int pagina)
+    {
+        var r = await Api.GetMascotasAsync(_buscar, pagina, 10, DuenoId);
+        if (r.Ok && r.Datos != null)
+        {
+            _lista = r.Datos.Datos;
+            _pagina = r.Datos.PaginaActual;
+            _totalPaginas = r.Datos.TotalPaginas;
+            _total = r.Datos.TotalRegistros;
+        }
+        else
+        {
+            _error = r.Error;
+        }
+    }
+
+    private async Task AlBuscar(ChangeEventArgs e)
+    {
+        _buscar = e.Value?.ToString() ?? string.Empty;
+        await _debounce.EjecutarAsync(() => Cargar(1));
+    }
+
+    private async Task AlBuscarDueno(ChangeEventArgs e)
+    {
+        _buscarDueno = e.Value?.ToString() ?? string.Empty;
+
+        await _debounceDueno.EjecutarAsync(async () =>
+        {
+            if (_buscarDueno.Trim().Length < 2)
+            {
+                _duenosEncontrados = new();
+                return;
+            }
+
+            var r = await Api.GetDuenosAsync(_buscarDueno, 1, 6);
+            _duenosEncontrados = r.Datos?.Datos ?? new();
+        });
+    }
+
+    private void Editar(Mascota m)
+    {
+        _ok = _error = null;
+        _editandoId = m.Id;
+        _duenoElegido = new Dueno { Id = m.DuenoId, NombreCompleto = m.DuenoNombre, Dni = m.DuenoDni };
+        _form = new MascotaRequest
+        {
+            Nombre = m.Nombre, Especie = m.Especie, Raza = m.Raza, Sexo = m.Sexo,
+            FechaNacimiento = m.FechaNacimiento, Peso = m.Peso, DuenoId = m.DuenoId
+        };
+    }
+
+    private void Limpiar()
+    {
+        _editandoId = null;
+        _form = new MascotaRequest();
+    }
+
+    private async Task Guardar()
+    {
+        _ok = _error = null;
+
+        if (_duenoElegido == null)
+        {
+            _error = "Elegí el dueño de la mascota.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_form.Nombre))
+        {
+            _error = "El nombre de la mascota es obligatorio.";
+            return;
+        }
+
+        _form.DuenoId = _duenoElegido.Id;
+        if (string.IsNullOrWhiteSpace(_form.Sexo)) _form.Sexo = null;
+
+        _procesando = true;
+        string? error;
+
+        if (_editandoId == null)
+        {
+            var r = await Api.CrearMascotaAsync(_form);
+            error = r.Ok ? null : r.Error;
+        }
+        else
+        {
+            var r = await Api.EditarMascotaAsync(_editandoId.Value, _form);
+            error = r.Ok ? null : r.Error;
+        }
+
+        _procesando = false;
+
+        if (error == null)
+        {
+            _ok = $"{_form.Nombre} guardado/a.";
+            Limpiar();
+            await Cargar(_pagina);
+        }
+        else
+        {
+            _error = error;
+        }
+    }
+
+    private static string Edad(DateTime? nacimiento)
+    {
+        if (nacimiento == null) return "-";
+
+        var meses = (DateTime.Today.Year - nacimiento.Value.Year) * 12 + DateTime.Today.Month - nacimiento.Value.Month;
+        if (meses < 0) return "-";
+
+        return meses < 12 ? $"{meses} mes(es)" : $"{meses / 12} año(s)";
+    }
+}

@@ -1,0 +1,120 @@
+@page "/historial/{MascotaId:int?}"
+@inject ApiMovil Api
+
+<h2 class="seccion-titulo">Historial clínico</h2>
+
+@if (_mascotas != null && _mascotas.Count > 1)
+{
+    <div class="chips-mascotas mb-3">
+        @foreach (var m in _mascotas)
+        {
+            <button class="chip-mascota @(m.Id == _seleccionada ? "activa" : "")" @onclick="() => Elegir(m.Id)">@m.Emoji @m.Nombre</button>
+        }
+    </div>
+}
+
+@if (_error != null)
+{
+    <div class="alert alert-danger small">@_error</div>
+}
+else if (_ficha == null)
+{
+    <p class="text-muted">@(_mascotas?.Count == 0 ? "No tenés mascotas cargadas." : "Cargando...")</p>
+}
+else
+{
+    <div class="tarjeta">
+        <div class="d-flex align-items-center gap-3">
+            <div class="avatar-mascota">@_ficha.Mascota.Emoji</div>
+            <div>
+                <div class="fw-bold fs-5">@_ficha.Mascota.Nombre</div>
+                <div class="small text-muted">@_ficha.Mascota.Especie @(_ficha.Mascota.Raza != null ? "· " + _ficha.Mascota.Raza : "") @(_ficha.Mascota.Sexo != null ? "· " + _ficha.Mascota.Sexo : "")</div>
+            </div>
+        </div>
+    </div>
+
+    @if (_ficha.Alergias.Count > 0)
+    {
+        <div class="tarjeta borde-rojo">
+            <div class="fw-semibold small mb-1"><i class="bi bi-exclamation-octagon text-danger"></i> Alergias</div>
+            @foreach (var a in _ficha.Alergias)
+            {
+                <span class="badge text-bg-danger me-1">@a.Descripcion</span>
+            }
+        </div>
+    }
+
+    <div class="tarjeta">
+        <div class="fw-semibold small mb-2"><i class="bi bi-shield-plus"></i> Vacunas</div>
+        @if (_ficha.Vacunas.Count == 0) { <div class="small text-muted">Sin vacunas registradas.</div> }
+        @foreach (var v in _ficha.Vacunas)
+        {
+            <div class="d-flex justify-content-between small border-bottom py-1">
+                <span>@v.Nombre <span class="text-muted">(@v.FechaAplicacion.ToString("dd/MM/yyyy"))</span></span>
+                @if (v.ProximaDosis.HasValue)
+                {
+                    <span class="text-primary">Próxima: @v.ProximaDosis.Value.ToString("dd/MM/yyyy")</span>
+                }
+            </div>
+        }
+    </div>
+
+    @if (_ficha.Cirugias.Count > 0)
+    {
+        <div class="tarjeta">
+            <div class="fw-semibold small mb-2"><i class="bi bi-bandaid"></i> Cirugías</div>
+            @foreach (var c in _ficha.Cirugias)
+            {
+                <div class="small border-bottom py-1">@c.Tipo <span class="text-muted">(@c.Fecha.ToString("dd/MM/yyyy"))</span></div>
+            }
+        </div>
+    }
+
+    <h3 class="seccion-titulo mt-3">Consultas</h3>
+    @if (_ficha.Atenciones.Count == 0) { <div class="small text-muted">Todavía no hay consultas registradas.</div> }
+    @foreach (var at in _ficha.Atenciones)
+    {
+        <div class="tarjeta">
+            <div class="small text-muted">@at.Fecha.ToString("dd/MM/yyyy HH:mm") · @at.VeterinarioNombre</div>
+            @if (!string.IsNullOrWhiteSpace(at.Motivo)) { <div class="small"><strong>Motivo:</strong> @at.Motivo</div> }
+            <div class="small"><strong>Diagnóstico:</strong> @at.Diagnostico</div>
+            @if (!string.IsNullOrWhiteSpace(at.Tratamiento)) { <div class="small"><strong>Tratamiento:</strong> @at.Tratamiento</div> }
+            @foreach (var r in at.Recetas)
+            {
+                <div class="small text-primary"><i class="bi bi-capsule"></i> @r.MedicamentoNombre · cant. @r.Cantidad @r.Dosis</div>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int? MascotaId { get; set; }
+
+    private List<Mascota>? _mascotas;
+    private FichaClinica? _ficha;
+    private int _seleccionada;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_mascotas == null)
+        {
+            var r = await Api.GetMascotasAsync();
+            if (!r.Ok) { _error = r.Error; return; }
+            _mascotas = r.Datos ?? new();
+        }
+
+        var id = MascotaId ?? _mascotas.FirstOrDefault()?.Id;
+        if (id != null) await Elegir(id.Value);
+    }
+
+    private async Task Elegir(int mascotaId)
+    {
+        _seleccionada = mascotaId;
+        _ficha = null;
+        _error = null;
+
+        var r = await Api.GetHistorialAsync(mascotaId);
+        if (r.Ok) _ficha = r.Datos; else _error = r.Error;
+    }
+}

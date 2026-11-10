@@ -1,0 +1,204 @@
+@page "/atencion/{MascotaId:int}"
+@attribute [Authorize(Roles = "Veterinario")]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Registrar atención</PageTitle>
+
+<div class="page-header">
+    <div class="page-icon"><i class="bi bi-clipboard2-pulse"></i></div>
+    <div>
+        <h1>Registrar atención @(_mascota != null ? "· " + _mascota.Nombre : "")</h1>
+        <p>@(_mascota != null ? $"{_mascota.Especie} · Dueño: {_mascota.DuenoNombre}" : "") @(TurnoId != null ? "· Desde turno de la agenda" : "· Sin turno")</p>
+    </div>
+</div>
+
+@if (_error != null) { <div class="alert alert-danger">@_error</div> }
+
+@if (_alergiasExistentes.Count > 0)
+{
+    <div class="alert alert-danger"><strong>Atención, alergias registradas:</strong> @string.Join(", ", _alergiasExistentes)</div>
+}
+
+<div class="row g-3">
+    <div class="col-lg-6">
+        <div class="card shadow-sm">
+            <div class="card-header">Consulta</div>
+            <div class="card-body">
+                <div class="mb-2"><label class="form-label small mb-1">Motivo</label><input class="form-control" @bind="_form.Motivo" /></div>
+                <div class="mb-2"><label class="form-label small mb-1">Diagnóstico *</label><textarea class="form-control" rows="3" @bind="_form.Diagnostico"></textarea></div>
+                <div class="mb-2"><label class="form-label small mb-1">Tratamiento</label><textarea class="form-control" rows="3" @bind="_form.Tratamiento"></textarea></div>
+                <div class="mb-2"><label class="form-label small mb-1">Observaciones</label><textarea class="form-control" rows="2" @bind="_form.Observaciones"></textarea></div>
+                <div style="max-width:180px"><label class="form-label small mb-1">Peso (kg)</label><input type="number" step="0.1" min="0" class="form-control" @bind="_form.Peso" /></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card shadow-sm mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-capsule"></i> Recetar medicamentos</span>
+                <button class="btn btn-sm btn-outline-primary" @onclick="() => _form.Recetas.Add(new RecetaRequest())">+ Agregar</button>
+            </div>
+            <div class="card-body">
+                @if (_form.Recetas.Count == 0) { <span class="small text-muted">Sin medicamentos. Lo recetado se descuenta del stock.</span> }
+                @foreach (var r in _form.Recetas)
+                {
+                    <div class="seccion-form">
+                        <div class="d-flex gap-2 mb-1">
+                            <select class="form-select form-select-sm" @bind="r.MedicamentoId">
+                                <option value="0">Medicamento...</option>
+                                @foreach (var m in _medicamentos)
+                                {
+                                    <option value="@m.Id" disabled="@(m.StockActual <= 0)">@m.Nombre @m.Presentacion (stock @m.StockActual)</option>
+                                }
+                            </select>
+                            <input type="number" min="1" class="form-control form-control-sm" style="max-width:80px" title="Cantidad" @bind="r.Cantidad" />
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => QuitarReceta(r)">✕</button>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <input class="form-control form-control-sm" placeholder="Dosis (ej: 1 comp. c/12 h)" @bind="r.Dosis" />
+                            <input class="form-control form-control-sm" placeholder="Indicaciones" @bind="r.Indicaciones" />
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-shield-plus"></i> Vacunas aplicadas</span>
+                <button class="btn btn-sm btn-outline-primary" @onclick="() => _form.Vacunas.Add(new VacunaRequest())">+ Agregar</button>
+            </div>
+            <div class="card-body">
+                @foreach (var v in _form.Vacunas)
+                {
+                    <div class="d-flex gap-2 mb-2">
+                        <input class="form-control form-control-sm" placeholder="Vacuna (ej: Antirrábica)" @bind="v.Nombre" />
+                        <input type="date" class="form-control form-control-sm" style="max-width:160px" title="Próxima dosis" @bind="v.ProximaDosis" />
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => QuitarVacuna(v)">✕</button>
+                    </div>
+                }
+                @if (_form.Vacunas.Count > 0) { <span class="small text-muted">La fecha es la de la próxima dosis (opcional).</span> }
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-exclamation-octagon"></i> Alergias nuevas</span>
+                <button class="btn btn-sm btn-outline-primary" @onclick="() => _form.Alergias.Add(new AlergiaRequest())">+ Agregar</button>
+            </div>
+            <div class="card-body">
+                @foreach (var a in _form.Alergias)
+                {
+                    <div class="d-flex gap-2 mb-2">
+                        <input class="form-control form-control-sm" placeholder="Ej: Penicilina" @bind="a.Descripcion" />
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => QuitarAlergia(a)">✕</button>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-bandaid"></i> Cirugías</span>
+                <button class="btn btn-sm btn-outline-primary" @onclick="() => _form.Cirugias.Add(new CirugiaRequest())">+ Agregar</button>
+            </div>
+            <div class="card-body">
+                @foreach (var c in _form.Cirugias)
+                {
+                    <div class="d-flex gap-2 mb-2">
+                        <input class="form-control form-control-sm" placeholder="Tipo (ej: Castración)" @bind="c.Tipo" />
+                        <input class="form-control form-control-sm" placeholder="Observaciones" @bind="c.Observaciones" />
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => QuitarCirugia(c)">✕</button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex gap-2 mt-3">
+    <button class="btn btn-success btn-lg" disabled="@_procesando" @onclick="Guardar">@(_procesando ? "Guardando..." : "Guardar atención")</button>
+    <button class="btn btn-outline-secondary btn-lg" @onclick="@(() => Nav.NavigateTo($"ficha/{MascotaId}"))">Ver ficha</button>
+</div>
+
+@code {
+    [Parameter] public int MascotaId { get; set; }
+
+    // atencion/5?turnoId=12 cuando se atiende desde la agenda
+    [SupplyParameterFromQuery] public int? TurnoId { get; set; }
+
+    private AtencionRequest _form = new();
+    private Mascota? _mascota;
+    private List<Medicamento> _medicamentos = new();
+    private List<string> _alergiasExistentes = new();
+    private string? _error;
+    private bool _procesando;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _form = new AtencionRequest { MascotaId = MascotaId, TurnoId = TurnoId };
+
+        var ficha = await Api.GetFichaAsync(MascotaId);
+        if (ficha.Ok && ficha.Datos != null)
+        {
+            _mascota = ficha.Datos.Mascota;
+            _form.Peso = _mascota.Peso;
+            _alergiasExistentes = ficha.Datos.Alergias.Select(a => a.Descripcion).ToList();
+        }
+        else
+        {
+            _error = ficha.Error;
+        }
+
+        if (TurnoId != null)
+        {
+            var agenda = await Api.GetAgendaAsync(DateTime.Today);
+            _form.Motivo = agenda.Datos?.FirstOrDefault(t => t.Id == TurnoId)?.Motivo;
+        }
+
+        var meds = await Api.GetMedicamentosAsync();
+        if (meds.Ok && meds.Datos != null) _medicamentos = meds.Datos;
+    }
+
+    private void QuitarReceta(RecetaRequest r) => _form.Recetas.Remove(r);
+    private void QuitarVacuna(VacunaRequest v) => _form.Vacunas.Remove(v);
+    private void QuitarAlergia(AlergiaRequest a) => _form.Alergias.Remove(a);
+    private void QuitarCirugia(CirugiaRequest c) => _form.Cirugias.Remove(c);
+
+    private async Task Guardar()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_form.Diagnostico))
+        {
+            _error = "El diagnóstico es obligatorio.";
+            return;
+        }
+
+        if (_form.Recetas.Any(r => r.MedicamentoId == 0 || r.Cantidad <= 0))
+        {
+            _error = "Cada medicamento recetado tiene que tener medicamento y cantidad.";
+            return;
+        }
+
+        // Se descartan las filas vacías
+        _form.Vacunas.RemoveAll(v => string.IsNullOrWhiteSpace(v.Nombre));
+        _form.Alergias.RemoveAll(a => string.IsNullOrWhiteSpace(a.Descripcion));
+        _form.Cirugias.RemoveAll(c => string.IsNullOrWhiteSpace(c.Tipo));
+
+        _procesando = true;
+        var r = await Api.RegistrarAtencionAsync(_form);
+        _procesando = false;
+
+        if (r.Ok)
+        {
+            Nav.NavigateTo($"ficha/{MascotaId}");
+        }
+        else
+        {
+            _error = r.Error;
+        }
+    }
+}

@@ -1,0 +1,131 @@
+@page "/"
+@attribute [Authorize]
+@inject ApiClient Api
+
+<PageTitle>Inicio</PageTitle>
+
+<AuthorizeView>
+    <div class="hero">
+        <h1>Hola, @context.User.Identity?.Name</h1>
+        <p>
+            Ingresaste como <strong>@RolTexto.Mostrar(context.User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value)</strong>.
+            Este es el resumen de la veterinaria hoy.
+        </p>
+    </div>
+</AuthorizeView>
+
+@if (_error != null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-xl-3">
+        <div class="kpi">
+            <div class="kpi-icon"><i class="bi bi-calendar-check"></i></div>
+            <div><div class="kpi-num">@(Valor(r => r.TurnosHoy))</div><div class="kpi-txt">Turnos hoy (@(Valor(r => r.TurnosPendientesHoy)) pendientes)</div></div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="kpi">
+            <div class="kpi-icon ok"><i class="bi bi-clipboard2-pulse"></i></div>
+            <div><div class="kpi-num">@(Valor(r => r.AtencionesHoy))</div><div class="kpi-txt">Atenciones hoy</div></div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="kpi">
+            <div class="kpi-icon"><i class="bi bi-heart"></i></div>
+            <div><div class="kpi-num">@(Valor(r => r.Mascotas))</div><div class="kpi-txt">Mascotas · @(Valor(r => r.Duenos)) dueños</div></div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="kpi">
+            <div class="kpi-icon warn"><i class="bi bi-exclamation-triangle"></i></div>
+            <div><div class="kpi-num">@(Valor(r => r.MedicamentosAReponer))</div><div class="kpi-txt">Medicamentos a reponer</div></div>
+        </div>
+    </div>
+</div>
+
+<h2 class="h6 text-uppercase text-muted mb-3" style="letter-spacing:.06em">Accesos rápidos</h2>
+
+<div class="row g-3">
+    <AuthorizeView Roles="Veterinario" Context="vet">
+        <div class="col-md-6 col-xl-4">
+            <a class="acceso" href="agenda">
+                <div class="acceso-icon"><i class="bi bi-calendar-day"></i></div>
+                <h2>Agenda del día</h2>
+                <p>Tus turnos de hoy y acceso directo a registrar la atención.</p>
+            </a>
+        </div>
+        <div class="col-md-6 col-xl-4">
+            <a class="acceso" href="mascotas">
+                <div class="acceso-icon"><i class="bi bi-file-medical"></i></div>
+                <h2>Ficha clínica</h2>
+                <p>Buscá una mascota y consultá su historial completo.</p>
+            </a>
+        </div>
+    </AuthorizeView>
+
+    <AuthorizeView Roles="Admin,Recepcionista" Context="recepcion">
+        <div class="col-md-6 col-xl-4">
+            <a class="acceso" href="duenos">
+                <div class="acceso-icon"><i class="bi bi-person-vcard"></i></div>
+                <h2>Dueños y mascotas</h2>
+                <p>Registrá dueños, sus mascotas y la cuenta para la app.</p>
+            </a>
+        </div>
+        <div class="col-md-6 col-xl-4">
+            <a class="acceso" href="turnos">
+                <div class="acceso-icon"><i class="bi bi-calendar-week"></i></div>
+                <h2>Turnos</h2>
+                <p>Agendá, cancelá o reprogramá turnos.</p>
+            </a>
+        </div>
+    </AuthorizeView>
+
+    <AuthorizeView Roles="Admin" Context="administrador">
+        <div class="col-md-6 col-xl-4">
+            <a class="acceso" href="usuarios">
+                <div class="acceso-icon"><i class="bi bi-people"></i></div>
+                <h2>Usuarios</h2>
+                <p>Alta de veterinarios, recepcionistas y administradores.</p>
+            </a>
+        </div>
+        <div class="col-md-6 col-xl-4">
+            <a class="acceso" href="medicamentos">
+                <div class="acceso-icon"><i class="bi bi-capsule"></i></div>
+                <h2>Medicamentos y stock</h2>
+                <p>Inventario actualizado y medicamentos a reponer.</p>
+            </a>
+        </div>
+        <div class="col-md-6 col-xl-4">
+            <a class="acceso" href="compras">
+                <div class="acceso-icon"><i class="bi bi-box-arrow-in-down"></i></div>
+                <h2>Compras</h2>
+                <p>Registrá compras a distribuidores: el stock se suma solo.</p>
+            </a>
+        </div>
+        <div class="col-md-6 col-xl-4">
+            <a class="acceso" href="reportes">
+                <div class="acceso-icon"><i class="bi bi-file-earmark-pdf"></i></div>
+                <h2>Reportes PDF</h2>
+                <p>Stock, compras y atenciones: descargalos o enviálos por correo.</p>
+            </a>
+        </div>
+    </AuthorizeView>
+</div>
+
+@code {
+    private Resumen? _resumen;
+    private string? _error;
+
+    private string Valor(Func<Resumen, int> campo) => _resumen == null ? "—" : campo(_resumen).ToString();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var r = await Api.GetResumenAsync();
+
+        if (r.Ok) _resumen = r.Datos;
+        else _error = r.Error;
+    }
+}

@@ -1,0 +1,158 @@
+@page "/medicamentos"
+@attribute [Authorize(Roles = "Admin,Veterinario")]
+@inject ApiClient Api
+
+<PageTitle>Medicamentos</PageTitle>
+
+<div class="page-header"><div class="page-icon"><i class="bi bi-capsule"></i></div><div><h1>Medicamentos y stock</h1><p>El stock sube con cada compra y baja con cada receta</p></div></div>
+
+@if (_ok != null) { <div class="alert alert-success">@_ok</div> }
+@if (_error != null) { <div class="alert alert-danger">@_error</div> }
+
+<div class="row g-3">
+    <AuthorizeView Roles="Admin" Context="admin">
+        <div class="col-lg-4">
+            <div class="card shadow-sm">
+                <div class="card-header">@(_editandoId == null ? "Nuevo medicamento" : "Editar medicamento")</div>
+                <div class="card-body">
+                    <div class="mb-2"><label class="form-label small mb-1">Nombre</label><input class="form-control" @bind="_form.Nombre" /></div>
+                    <div class="mb-2"><label class="form-label small mb-1">Presentación</label><input class="form-control" placeholder="Ej: Comprimidos 250 mg" @bind="_form.Presentacion" /></div>
+                    <div class="mb-2"><label class="form-label small mb-1">Descripción</label><input class="form-control" @bind="_form.Descripcion" /></div>
+                    <div class="row g-2 mb-3">
+                        <div class="col"><label class="form-label small mb-1">Stock mínimo</label><input type="number" min="0" class="form-control" @bind="_form.StockMinimo" /></div>
+                        @if (_editandoId == null)
+                        {
+                            <div class="col"><label class="form-label small mb-1">Stock inicial</label><input type="number" min="0" class="form-control" @bind="_form.StockInicial" /></div>
+                        }
+                    </div>
+                    <button class="btn btn-primary" @onclick="Guardar">Guardar</button>
+                    @if (_editandoId != null)
+                    {
+                        <button class="btn btn-outline-secondary ms-2" @onclick="Limpiar">Cancelar</button>
+                    }
+                </div>
+            </div>
+        </div>
+    </AuthorizeView>
+
+    <div class="col">
+        <div class="d-flex gap-2 mb-2">
+            <input class="form-control" placeholder="Buscar medicamento..." @bind="_buscar" @bind:event="oninput" @onkeyup="AlEscribir" />
+            <div class="form-check form-switch text-nowrap align-self-center">
+                <input class="form-check-input" type="checkbox" id="reponer" @bind="_soloReponer" @bind:after="Cargar" />
+                <label class="form-check-label small" for="reponer">Solo a reponer</label>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle">
+                <thead><tr><th>Medicamento</th><th>Presentación</th><th class="text-end">Stock</th><th class="text-end">Mínimo</th><th>Estado</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var m in _lista)
+                    {
+                        <tr class="@(m.Activo ? "" : "text-muted")">
+                            <td>@m.Nombre <small class="d-block text-muted">@m.Descripcion</small></td>
+                            <td>@m.Presentacion</td>
+                            <td class="text-end fw-semibold">@m.StockActual</td>
+                            <td class="text-end">@m.StockMinimo</td>
+                            <td>
+                                @if (!m.Activo)
+                                {
+                                    <span class="badge bg-secondary">Inactivo</span>
+                                }
+                                else if (m.Reponer)
+                                {
+                                    <span class="badge bg-danger">Reponer</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-success">OK</span>
+                                }
+                            </td>
+                            <td class="text-end text-nowrap">
+                                <AuthorizeView Roles="Admin" Context="admin2">
+                                    <button class="btn btn-sm btn-outline-primary" @onclick="() => Editar(m)">Editar</button>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => CambiarEstado(m)">@(m.Activo ? "Desactivar" : "Activar")</button>
+                                </AuthorizeView>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly Debouncer _debouncer = new();
+    private List<Medicamento> _lista = new();
+    private MedicamentoRequest _form = new();
+    private int? _editandoId;
+    private string _buscar = string.Empty;
+    private bool _soloReponer;
+    private string? _ok;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => Cargar();
+
+    private Task AlEscribir() => _debouncer.EjecutarAsync(async () => { await Cargar(); StateHasChanged(); });
+
+    private async Task Cargar()
+    {
+        var r = await Api.GetMedicamentosAsync(_buscar, _soloReponer, incluirInactivos: true);
+        if (r.Ok && r.Datos != null) _lista = r.Datos; else _error = r.Error;
+    }
+
+    private void Editar(Medicamento m)
+    {
+        _editandoId = m.Id;
+        _form = new MedicamentoRequest { Nombre = m.Nombre, Presentacion = m.Presentacion, Descripcion = m.Descripcion, StockMinimo = m.StockMinimo };
+    }
+
+    private void Limpiar()
+    {
+        _editandoId = null;
+        _form = new MedicamentoRequest();
+    }
+
+    private async Task Guardar()
+    {
+        _ok = _error = null;
+
+        if (string.IsNullOrWhiteSpace(_form.Nombre))
+        {
+            _error = "El nombre es obligatorio.";
+            return;
+        }
+
+        string? error;
+
+        if (_editandoId == null)
+        {
+            var r = await Api.CrearMedicamentoAsync(_form);
+            error = r.Ok ? null : r.Error;
+        }
+        else
+        {
+            var r = await Api.EditarMedicamentoAsync(_editandoId.Value, _form);
+            error = r.Ok ? null : r.Error;
+        }
+
+        if (error == null)
+        {
+            _ok = "Medicamento guardado.";
+            Limpiar();
+            await Cargar();
+        }
+        else
+        {
+            _error = error;
+        }
+    }
+
+    private async Task CambiarEstado(Medicamento m)
+    {
+        var r = await Api.CambiarEstadoMedicamentoAsync(m.Id, !m.Activo);
+        if (r.Ok) await Cargar(); else _error = r.Error;
+    }
+}

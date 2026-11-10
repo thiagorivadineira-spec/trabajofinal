@@ -1,0 +1,57 @@
+@page "/"
+@inject ApiMovil Api
+@inject NavigationManager Nav
+
+<h2 class="seccion-titulo">Mis mascotas</h2>
+
+@if (_error != null)
+{
+    <div class="alert alert-danger small">@_error</div>
+}
+else if (_mascotas == null)
+{
+    <p class="text-muted">Cargando...</p>
+}
+else if (_mascotas.Count == 0)
+{
+    <div class="vacio"><i class="bi bi-heart"></i><p>Todavía no hay mascotas cargadas a tu nombre.</p></div>
+}
+else
+{
+    @foreach (var m in _mascotas)
+    {
+        <div class="tarjeta tarjeta-mascota" @onclick="@(() => Nav.NavigateTo($"historial/{m.Id}"))">
+            <div class="avatar-mascota">@m.Emoji</div>
+            <div class="flex-grow-1">
+                <div class="fw-bold">@m.Nombre</div>
+                <div class="small text-muted">@m.Especie @(m.Raza != null ? "· " + m.Raza : "") @(m.Peso.HasValue ? $"· {m.Peso:0.#} kg" : "")</div>
+            </div>
+            <i class="bi bi-chevron-right text-muted"></i>
+        </div>
+    }
+}
+
+@if (_proximoTurno != null)
+{
+    <h2 class="seccion-titulo mt-4">Próximo turno</h2>
+    <div class="tarjeta" @onclick="@(() => Nav.NavigateTo("turnos"))">
+        <div class="fw-bold">@_proximoTurno.FechaHora.ToString("dddd dd/MM · HH:mm")</div>
+        <div class="small">@_proximoTurno.MascotaNombre con @_proximoTurno.VeterinarioNombre</div>
+        <div class="small text-muted">@_proximoTurno.Motivo</div>
+    </div>
+}
+
+@code {
+    private List<Mascota>? _mascotas;
+    private Turno? _proximoTurno;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var r = await Api.GetMascotasAsync();
+        if (r.Ok) _mascotas = r.Datos ?? new(); else _error = r.Error;
+
+        var t = await Api.GetTurnosAsync(incluirPasados: false);
+        _proximoTurno = t.Datos?.FirstOrDefault(x => x.Estado == "Pendiente");
+    }
+}

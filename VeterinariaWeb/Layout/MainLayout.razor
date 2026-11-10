@@ -1,0 +1,20 @@
+﻿@inherits LayoutComponentBase
+
+@* Con sesión: barra lateral + contenido. Sin sesión (login): pantalla completa sin menú. *@
+<AuthorizeView>
+    <Authorized>
+        <div class="shell">
+            <NavMenu />
+            <div class="shell-main">
+                <main class="contenido">
+                    @Body
+                </main>
+            </div>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="auth-screen">
+            @Body
+        </div>
+    </NotAuthorized>
+</AuthorizeView>

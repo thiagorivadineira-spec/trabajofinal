@@ -1,0 +1,91 @@
+@inject JwtAuthStateProvider Auth
+@inject NavigationManager Nav
+
+@* Barra superior: solo se ve en pantallas chicas *@
+<header class="mobile-bar">
+    <button class="icon-btn" aria-label="Abrir menú" @onclick="Alternar"><i class="bi bi-list"></i></button>
+    <span class="mobile-brand"><i class="bi bi-heart-pulse"></i> Volki</span>
+</header>
+
+<div class="sidebar-overlay @(_abierto ? "visible" : "")" @onclick="Cerrar"></div>
+
+<aside class="sidebar @(_abierto ? "abierto" : "")">
+    <div class="sidebar-brand">
+        <span class="brand-icon"><i class="bi bi-heart-pulse"></i></span>
+        <div>
+            <div class="brand-name">Volki</div>
+            <div class="brand-sub">Gestión veterinaria</div>
+        </div>
+    </div>
+
+    <AuthorizeView>
+        <Authorized>
+            <nav class="sidebar-nav" @onclick="Cerrar">
+                <div class="nav-section">General</div>
+                <NavLink class="nav-item-link" href="" Match="NavLinkMatch.All"><i class="bi bi-speedometer2"></i><span>Inicio</span></NavLink>
+                <NavLink class="nav-item-link" href="mascotas"><i class="bi bi-search-heart"></i><span>Buscar mascota</span></NavLink>
+
+                <AuthorizeView Roles="Veterinario" Context="vet">
+                    <div class="nav-section">Consultorio</div>
+                    <NavLink class="nav-item-link" href="agenda"><i class="bi bi-calendar-day"></i><span>Agenda del día</span></NavLink>
+                    <NavLink class="nav-item-link" href="medicamentos"><i class="bi bi-capsule"></i><span>Medicamentos</span></NavLink>
+                </AuthorizeView>
+
+                <AuthorizeView Roles="Admin,Recepcionista" Context="recepcion">
+                    <div class="nav-section">Recepción</div>
+                    <NavLink class="nav-item-link" href="duenos"><i class="bi bi-person-vcard"></i><span>Dueños</span></NavLink>
+                    <NavLink class="nav-item-link" href="turnos"><i class="bi bi-calendar-week"></i><span>Turnos</span></NavLink>
+                </AuthorizeView>
+
+                <AuthorizeView Roles="Admin" Context="administrador">
+                    <div class="nav-section">Gestión</div>
+                    <NavLink class="nav-item-link" href="usuarios"><i class="bi bi-people"></i><span>Usuarios</span></NavLink>
+                    <NavLink class="nav-item-link" href="especialidades"><i class="bi bi-bookmark-star"></i><span>Especialidades</span></NavLink>
+                    <NavLink class="nav-item-link" href="medicamentos"><i class="bi bi-capsule"></i><span>Medicamentos y stock</span></NavLink>
+                    <NavLink class="nav-item-link" href="distribuidores"><i class="bi bi-truck"></i><span>Distribuidores</span></NavLink>
+                    <NavLink class="nav-item-link" href="compras"><i class="bi bi-box-arrow-in-down"></i><span>Compras</span></NavLink>
+                    <NavLink class="nav-item-link" href="reportes"><i class="bi bi-file-earmark-pdf"></i><span>Reportes</span></NavLink>
+                    <NavLink class="nav-item-link" href="auditoria"><i class="bi bi-shield-check"></i><span>Auditoría</span></NavLink>
+                </AuthorizeView>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-box">
+                    <div class="avatar">@Iniciales(context.User.Identity?.Name)</div>
+                    <div class="user-info">
+                        <div class="user-name">@context.User.Identity?.Name</div>
+                        <div class="user-role">@RolTexto.Mostrar(context.User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value)</div>
+                    </div>
+                </div>
+                <NavLink class="nav-item-link" href="cuenta" @onclick="Cerrar"><i class="bi bi-person-gear"></i><span>Mi perfil</span></NavLink>
+                <button class="nav-item-link" @onclick="CerrarSesion"><i class="bi bi-box-arrow-right"></i><span>Cerrar sesión</span></button>
+            </div>
+        </Authorized>
+    </AuthorizeView>
+</aside>
+
+@code {
+    private bool _abierto;
+
+    private void Alternar() => _abierto = !_abierto;
+
+    private void Cerrar() => _abierto = false;
+
+    private async Task CerrarSesion()
+    {
+        _abierto = false;
+        await Auth.CerrarSesionAsync();
+        Nav.NavigateTo("login");
+    }
+
+    private static string Iniciales(string? nombre)
+    {
+        if (string.IsNullOrWhiteSpace(nombre)) return "?";
+
+        var partes = nombre.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+        return partes.Length == 1
+            ? partes[0][..1].ToUpperInvariant()
+            : (partes[0][..1] + partes[1][..1]).ToUpperInvariant();
+    }
+}

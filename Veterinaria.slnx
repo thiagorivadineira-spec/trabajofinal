@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="VeterinariaApi/VeterinariaApi.csproj" />
+  <Project Path="VeterinariaMovil/VeterinariaMovil.csproj" Id="45393cc8-cbf1-46fa-a491-b89eb74fa10e" />
+  <Project Path="VeterinariaWeb/VeterinariaWeb.csproj" />
+</Solution>

@@ -1,0 +1,44 @@
+@page "/medicamentos"
+@inject ApiMovil Api
+
+<h2 class="seccion-titulo">Medicamentos recetados</h2>
+
+@if (_error != null)
+{
+    <div class="alert alert-danger small">@_error</div>
+}
+else if (_recetas == null)
+{
+    <p class="text-muted">Cargando...</p>
+}
+else if (_recetas.Count == 0)
+{
+    <div class="vacio"><i class="bi bi-capsule"></i><p>Tus mascotas no tienen medicamentos recetados.</p></div>
+}
+else
+{
+    @foreach (var r in _recetas)
+    {
+        <div class="tarjeta">
+            <div class="d-flex justify-content-between">
+                <span class="fw-bold"><i class="bi bi-capsule text-primary"></i> @r.MedicamentoNombre</span>
+                <span class="small text-muted">@r.Fecha.ToString("dd/MM/yyyy")</span>
+            </div>
+            <div class="small text-muted">@r.Presentacion · Cantidad: @r.Cantidad</div>
+            <div class="small">Para <strong>@r.MascotaNombre</strong> · @r.VeterinarioNombre</div>
+            @if (!string.IsNullOrWhiteSpace(r.Dosis)) { <div class="small"><strong>Dosis:</strong> @r.Dosis</div> }
+            @if (!string.IsNullOrWhiteSpace(r.Indicaciones)) { <div class="small"><strong>Indicaciones:</strong> @r.Indicaciones</div> }
+        </div>
+    }
+}
+
+@code {
+    private List<Receta>? _recetas;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var r = await Api.GetMedicamentosAsync();
+        if (r.Ok) _recetas = r.Datos ?? new(); else _error = r.Error;
+    }
+}

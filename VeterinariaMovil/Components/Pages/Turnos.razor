@@ -1,0 +1,52 @@
+@page "/turnos"
+@inject ApiMovil Api
+
+<h2 class="seccion-titulo">Mis turnos</h2>
+
+<div class="form-check form-switch mb-3">
+    <input class="form-check-input" type="checkbox" id="pasados" @bind="_incluirPasados" @bind:after="Cargar" />
+    <label class="form-check-label small" for="pasados">Mostrar también los pasados</label>
+</div>
+
+@if (_error != null)
+{
+    <div class="alert alert-danger small">@_error</div>
+}
+else if (_turnos == null)
+{
+    <p class="text-muted">Cargando...</p>
+}
+else if (_turnos.Count == 0)
+{
+    <div class="vacio"><i class="bi bi-calendar-x"></i><p>No tenés turnos. Para pedir uno, comunicate con la recepción.</p></div>
+}
+else
+{
+    @foreach (var t in _turnos)
+    {
+        <div class="tarjeta">
+            <div class="d-flex justify-content-between">
+                <span class="fw-bold">@t.FechaHora.ToString("dd/MM/yyyy · HH:mm")</span>
+                <span class="badge estado-@t.Estado">@t.Estado</span>
+            </div>
+            <div class="small">@(t.Especie == "Gato" ? "🐱" : "🐶") @t.MascotaNombre</div>
+            <div class="small text-muted">@t.VeterinarioNombre · @t.EspecialidadNombre</div>
+            @if (!string.IsNullOrWhiteSpace(t.Motivo)) { <div class="small text-muted">@t.Motivo</div> }
+        </div>
+    }
+}
+
+@code {
+    private List<Turno>? _turnos;
+    private bool _incluirPasados;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => Cargar();
+
+    private async Task Cargar()
+    {
+        _error = null;
+        var r = await Api.GetTurnosAsync(_incluirPasados);
+        if (r.Ok) _turnos = r.Datos ?? new(); else _error = r.Error;
+    }
+}

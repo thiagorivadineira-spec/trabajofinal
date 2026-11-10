@@ -1,0 +1,146 @@
+@page "/ficha/{MascotaId:int}"
+@attribute [Authorize(Roles = "Admin,Veterinario")]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Ficha clínica</PageTitle>
+
+@if (_error != null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else if (_ficha == null)
+{
+    <p class="text-muted">Cargando ficha...</p>
+}
+else
+{
+    var m = _ficha.Mascota;
+
+    <div class="page-header">
+        <div class="page-icon">@(m.Especie == "Gato" ? "🐱" : "🐶")</div>
+        <div class="flex-grow-1"><h1>Ficha clínica de @m.Nombre</h1><p>@m.Especie @(m.Raza != null ? "· " + m.Raza : "") · Dueño: @m.DuenoNombre (@m.DuenoTelefono)</p></div>
+        <AuthorizeView Roles="Veterinario" Context="vet">
+            <button class="btn btn-primary" @onclick="@(() => Nav.NavigateTo($"atencion/{m.Id}"))"><i class="bi bi-clipboard2-pulse"></i> Registrar atención</button>
+        </AuthorizeView>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-md-3"><div class="kpi d-block"><div class="ficha-dato">Sexo</div><div class="ficha-valor">@(m.Sexo ?? "-")</div></div></div>
+        <div class="col-6 col-md-3"><div class="kpi d-block"><div class="ficha-dato">Nacimiento</div><div class="ficha-valor">@(m.FechaNacimiento?.ToString("dd/MM/yyyy") ?? "-")</div></div></div>
+        <div class="col-6 col-md-3"><div class="kpi d-block"><div class="ficha-dato">Peso</div><div class="ficha-valor">@(m.Peso.HasValue ? $"{m.Peso:0.##} kg" : "-")</div></div></div>
+        <div class="col-6 col-md-3"><div class="kpi d-block"><div class="ficha-dato">Atenciones</div><div class="ficha-valor">@_ficha.Atenciones.Count</div></div></div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-header"><i class="bi bi-exclamation-octagon text-danger"></i> Alergias</div>
+        <div class="card-body">
+            @if (_ficha.Alergias.Count == 0)
+            {
+                <span class="text-muted small">Sin alergias registradas.</span>
+            }
+            @foreach (var a in _ficha.Alergias)
+            {
+                <span class="chip">@a.Descripcion</span>
+            }
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header"><i class="bi bi-shield-plus"></i> Vacunas</div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>Vacuna</th><th>Aplicada</th><th>Próxima dosis</th></tr></thead>
+                        <tbody>
+                            @if (_ficha.Vacunas.Count == 0)
+                            {
+                                <tr><td colspan="3" class="text-muted small">Sin vacunas registradas.</td></tr>
+                            }
+                            @foreach (var v in _ficha.Vacunas)
+                            {
+                                <tr><td>@v.Nombre</td><td>@v.FechaAplicacion.ToString("dd/MM/yyyy")</td><td>@(v.ProximaDosis?.ToString("dd/MM/yyyy") ?? "-")</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header"><i class="bi bi-bandaid"></i> Cirugías</div>
+                <div class="card-body p-0">
+                    <table class="table table-sm mb-0">
+                        <thead><tr><th>Cirugía</th><th>Fecha</th><th>Observaciones</th></tr></thead>
+                        <tbody>
+                            @if (_ficha.Cirugias.Count == 0)
+                            {
+                                <tr><td colspan="3" class="text-muted small">Sin cirugías registradas.</td></tr>
+                            }
+                            @foreach (var c in _ficha.Cirugias)
+                            {
+                                <tr><td>@c.Tipo</td><td>@c.Fecha.ToString("dd/MM/yyyy")</td><td class="small">@c.Observaciones</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header"><i class="bi bi-clock-history"></i> Historial de atenciones</div>
+        <div class="card-body">
+            @if (_ficha.Atenciones.Count == 0)
+            {
+                <span class="text-muted small">Todavía no tiene atenciones registradas.</span>
+            }
+            @foreach (var a in _ficha.Atenciones)
+            {
+                <div class="timeline-item">
+                    <div class="small text-muted">@Formato.Fecha(a.Fecha) · @a.VeterinarioNombre @(a.Peso.HasValue ? $"· {a.Peso:0.##} kg" : "")</div>
+                    @if (!string.IsNullOrWhiteSpace(a.Motivo))
+                    {
+                        <div><strong>Motivo:</strong> @a.Motivo</div>
+                    }
+                    <div><strong>Diagnóstico:</strong> @a.Diagnostico</div>
+                    @if (!string.IsNullOrWhiteSpace(a.Tratamiento))
+                    {
+                        <div><strong>Tratamiento:</strong> @a.Tratamiento</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(a.Observaciones))
+                    {
+                        <div class="small text-muted">@a.Observaciones</div>
+                    }
+                    @if (a.Recetas.Count > 0)
+                    {
+                        <div class="small mt-1"><i class="bi bi-capsule"></i>
+                            @TextoRecetas(a)
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int MascotaId { get; set; }
+
+    private FichaClinica? _ficha;
+
+    private static string TextoRecetas(Atencion a) =>
+        string.Join(" · ", a.Recetas.Select(r =>
+            string.IsNullOrWhiteSpace(r.Dosis)
+                ? $"{r.MedicamentoNombre} x{r.Cantidad}"
+                : $"{r.MedicamentoNombre} x{r.Cantidad} ({r.Dosis})"));
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _ficha = null;
+        var r = await Api.GetFichaAsync(MascotaId);
+        if (r.Ok) _ficha = r.Datos; else _error = r.Error;
+    }
+}

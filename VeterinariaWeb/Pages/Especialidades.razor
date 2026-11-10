@@ -1,0 +1,124 @@
+@page "/especialidades"
+@attribute [Authorize(Roles = "Admin")]
+@inject ApiClient Api
+
+<PageTitle>Especialidades</PageTitle>
+
+<div class="page-header"><div class="page-icon"><i class="bi bi-bookmark-star"></i></div><div><h1>Especialidades</h1><p>Se usan para asignar cada turno al veterinario que corresponde</p></div></div>
+
+@if (_ok != null) { <div class="alert alert-success">@_ok</div> }
+@if (_error != null) { <div class="alert alert-danger">@_error</div> }
+
+<div class="row g-3">
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header">@(_editandoId == null ? "Nueva especialidad" : "Editar especialidad")</div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Nombre</label>
+                    <input class="form-control" @bind="_form.Nombre" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small mb-1">Descripción</label>
+                    <input class="form-control" @bind="_form.Descripcion" />
+                </div>
+                <button class="btn btn-primary" @onclick="Guardar">Guardar</button>
+                @if (_editandoId != null)
+                {
+                    <button class="btn btn-outline-secondary ms-2" @onclick="Limpiar">Cancelar</button>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-8">
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle">
+                <thead><tr><th>Nombre</th><th>Descripción</th><th class="text-end">Veterinarios</th><th>Estado</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var e in _lista)
+                    {
+                        <tr>
+                            <td>@e.Nombre</td>
+                            <td class="small text-muted">@e.Descripcion</td>
+                            <td class="text-end">@e.CantidadVeterinarios</td>
+                            <td><span class="badge @(e.Activo ? "bg-success" : "bg-secondary")">@(e.Activo ? "Activa" : "Inactiva")</span></td>
+                            <td class="text-end text-nowrap">
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => Editar(e)">Editar</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => CambiarEstado(e)">@(e.Activo ? "Desactivar" : "Activar")</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<Especialidad> _lista = new();
+    private EspecialidadRequest _form = new();
+    private int? _editandoId;
+    private string? _ok;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => Cargar();
+
+    private async Task Cargar()
+    {
+        var r = await Api.GetEspecialidadesAsync(incluirInactivas: true);
+        if (r.Ok && r.Datos != null) _lista = r.Datos; else _error = r.Error;
+    }
+
+    private void Editar(Especialidad e)
+    {
+        _editandoId = e.Id;
+        _form = new EspecialidadRequest { Nombre = e.Nombre, Descripcion = e.Descripcion };
+    }
+
+    private void Limpiar()
+    {
+        _editandoId = null;
+        _form = new EspecialidadRequest();
+    }
+
+    private async Task Guardar()
+    {
+        _ok = _error = null;
+
+        if (string.IsNullOrWhiteSpace(_form.Nombre))
+        {
+            _error = "El nombre es obligatorio.";
+            return;
+        }
+
+        string? error;
+
+        if (_editandoId == null)
+        {
+            var r = await Api.CrearEspecialidadAsync(_form);
+            error = r.Ok ? null : r.Error;
+        }
+        else
+        {
+            var r = await Api.EditarEspecialidadAsync(_editandoId.Value, _form);
+            error = r.Ok ? null : r.Error;
+        }
+
+        if (error == null)
+        {
+            _ok = "Especialidad guardada.";
+            Limpiar();
+            await Cargar();
+        }
+        else
+        {
+            _error = error;
+        }
+    }
+
+    private async Task CambiarEstado(Especialidad e)
+    {
+        var r = await Api.CambiarEstadoEspecialidadAsync(e.Id, !e.Activo);
+        if (r.Ok) await Cargar(); else _error = r.Error;
+    }
+}

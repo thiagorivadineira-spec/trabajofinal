@@ -1,0 +1,66 @@
+@inject ApiMovil Api
+@inject SesionMovil Sesion
+@inject NavigationManager Nav
+
+<div class="login">
+    <div class="login-logo"><i class="bi bi-heart-pulse"></i></div>
+    <h1>Veterinaria Volki</h1>
+    <p class="login-sub">App para dueños: historial, turnos y medicamentos de tus mascotas</p>
+
+    <div class="login-card">
+        @if (_error != null)
+        {
+            <div class="alert alert-danger py-2 small">@_error</div>
+        }
+
+        <label class="form-label small">Usuario</label>
+        <input class="form-control mb-3" @bind="_usuario" autocomplete="username" autocapitalize="none" />
+
+        <label class="form-label small">Contraseña</label>
+        <input type="password" class="form-control mb-4" @bind="_password" autocomplete="current-password" />
+
+        <button class="btn btn-volki w-100 py-2" disabled="@_cargando" @onclick="Ingresar">
+            @(_cargando ? "Ingresando..." : "Ingresar")
+        </button>
+
+        <p class="small text-muted text-center mt-3 mb-0">¿No tenés cuenta? Pedila en la recepción de la veterinaria.</p>
+    </div>
+</div>
+
+@code {
+    private string _usuario = string.Empty;
+    private string _password = string.Empty;
+    private string? _error;
+    private bool _cargando;
+
+    private async Task Ingresar()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_usuario) || string.IsNullOrWhiteSpace(_password))
+        {
+            _error = "Ingresá usuario y contraseña.";
+            return;
+        }
+
+        _cargando = true;
+        var r = await Api.LoginAsync(_usuario.Trim(), _password);
+        _cargando = false;
+
+        if (!r.Ok || r.Datos == null)
+        {
+            _error = r.Error ?? "No se pudo iniciar sesión.";
+            return;
+        }
+
+        // La app es solo para dueños; el personal usa la web
+        if (r.Datos.Rol != "Dueno")
+        {
+            _error = "Esta app es para dueños de mascotas. El personal de la veterinaria ingresa desde la web.";
+            return;
+        }
+
+        await Sesion.IniciarAsync(r.Datos);
+        Nav.NavigateTo("");
+    }
+}

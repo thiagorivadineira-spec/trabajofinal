@@ -1,0 +1,266 @@
+@page "/usuarios"
+@attribute [Authorize(Roles = "Admin")]
+@inject ApiClient Api
+
+<PageTitle>Usuarios</PageTitle>
+
+<div class="page-header"><div class="page-icon"><i class="bi bi-people"></i></div><div><h1>Usuarios del personal</h1><p>Alta y baja de administradores, veterinarios y recepcionistas</p></div></div>
+
+@if (_ok != null)
+{
+    <div class="alert alert-success">@_ok</div>
+}
+@if (_error != null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+<div class="row g-3">
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header fw-semibold">Nuevo usuario</div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Rol</label>
+                    <select class="form-select" @bind="_nuevo.Rol">
+                        <option value="Recepcionista">Recepcionista</option>
+                        <option value="Veterinario">Veterinario</option>
+                        <option value="Admin">Administrador</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Nombre y apellido</label>
+                    <input class="form-control" @bind="_nuevo.Nombre" />
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Usuario</label>
+                    <input class="form-control" @bind="_nuevo.Username" autocomplete="off" />
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Contraseña (mínimo 6 caracteres)</label>
+                    <input type="password" class="form-control" @bind="_nuevo.Password" autocomplete="new-password" />
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Email (opcional)</label>
+                    <input type="email" class="form-control" @bind="_nuevo.Email" />
+                </div>
+
+                @if (_nuevo.Rol == "Veterinario")
+                {
+                    <div class="seccion-form">
+                        <div class="small fw-semibold mb-2"><i class="bi bi-heart-pulse"></i> Datos del veterinario</div>
+                        <div class="mb-2">
+                            <label class="form-label small mb-1">Matrícula</label>
+                            <input class="form-control" @bind="_nuevo.Matricula" />
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small mb-1">Especialidad</label>
+                            <select class="form-select" @bind="_especialidadId">
+                                <option value="0">Seleccionar...</option>
+                                @foreach (var e in _especialidades)
+                                {
+                                    <option value="@e.Id">@e.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                        <div>
+                            <label class="form-label small mb-1">Teléfono</label>
+                            <input class="form-control" @bind="_nuevo.Telefono" />
+                        </div>
+                    </div>
+                }
+
+                <button class="btn btn-primary mt-2" disabled="@_procesando" @onclick="Crear">Crear usuario</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        @if (_cargando)
+        {
+            <p class="text-muted">Cargando...</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-striped align-middle">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Usuario</th>
+                            <th>Rol</th>
+                            <th>Datos</th>
+                            <th>Estado</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var u in _usuarios)
+                        {
+                            <tr>
+                                <td>@u.Nombre</td>
+                                <td>@u.Username</td>
+                                <td>@RolTexto.Mostrar(u.Rol)</td>
+                                <td class="small text-muted">
+                                    @if (u.Matricula != null)
+                                    {
+                                        <span>MP @u.Matricula · @u.EspecialidadNombre</span>
+                                    }
+                                    else
+                                    {
+                                        @u.Email
+                                    }
+                                </td>
+                                <td>
+                                    <span class="badge @(u.Activo ? "bg-success" : "bg-secondary")">@(u.Activo ? "Activo" : "Inactivo")</span>
+                                </td>
+                                <td class="text-end text-nowrap">
+                                    <button class="btn btn-sm btn-outline-secondary" title="Restablecer contraseña" @onclick="() => Restablecer(u)"><i class="bi bi-key"></i></button>
+                                    <button class="btn btn-sm @(u.Activo ? "btn-outline-danger" : "btn-outline-success")"
+                                            @onclick="() => CambiarEstado(u)">
+                                        @(u.Activo ? "Desactivar" : "Activar")
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (_restableciendo != null)
+            {
+                <div class="card shadow-sm mt-3" style="max-width:420px">
+                    <div class="card-header">Nueva contraseña para @_restableciendo.Username</div>
+                    <div class="card-body d-flex gap-2">
+                        <input type="password" class="form-control" @bind="_passwordNueva" placeholder="Mínimo 6 caracteres" />
+                        <button class="btn btn-primary" @onclick="GuardarPassword">Guardar</button>
+                        <button class="btn btn-outline-secondary" @onclick="() => _restableciendo = null">Cancelar</button>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private List<Usuario> _usuarios = new();
+    private List<Especialidad> _especialidades = new();
+    private UsuarioNuevo _nuevo = new();
+    private int _especialidadId;
+    private Usuario? _restableciendo;
+    private string _passwordNueva = string.Empty;
+    private string? _ok;
+    private string? _error;
+    private bool _cargando;
+    private bool _procesando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var esp = await Api.GetEspecialidadesAsync();
+        if (esp.Ok && esp.Datos != null) _especialidades = esp.Datos;
+
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        _cargando = true;
+        var r = await Api.GetUsuariosAsync();
+        _cargando = false;
+
+        if (r.Ok && r.Datos != null)
+        {
+            _usuarios = r.Datos;
+        }
+        else
+        {
+            _error = r.Error;
+        }
+    }
+
+    private async Task Crear()
+    {
+        _ok = null;
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_nuevo.Nombre) || string.IsNullOrWhiteSpace(_nuevo.Username))
+        {
+            _error = "Completá nombre y usuario.";
+            return;
+        }
+
+        if (_nuevo.Password.Length < 6)
+        {
+            _error = "La contraseña debe tener al menos 6 caracteres.";
+            return;
+        }
+
+        if (_nuevo.Rol == "Veterinario" && (string.IsNullOrWhiteSpace(_nuevo.Matricula) || _especialidadId == 0))
+        {
+            _error = "Para un veterinario completá matrícula y especialidad.";
+            return;
+        }
+
+        _nuevo.EspecialidadId = _nuevo.Rol == "Veterinario" ? _especialidadId : null;
+        if (string.IsNullOrWhiteSpace(_nuevo.Email)) _nuevo.Email = null;
+
+        _procesando = true;
+        var r = await Api.CrearUsuarioAsync(_nuevo);
+        _procesando = false;
+
+        if (r.Ok)
+        {
+            _ok = $"Usuario \"{_nuevo.Username}\" creado como {RolTexto.Mostrar(_nuevo.Rol)}.";
+            _nuevo = new UsuarioNuevo();
+            _especialidadId = 0;
+            await Cargar();
+        }
+        else
+        {
+            _error = r.Error;
+        }
+    }
+
+    private async Task CambiarEstado(Usuario usuario)
+    {
+        _ok = null;
+        _error = null;
+
+        var r = await Api.CambiarEstadoUsuarioAsync(usuario.Id, !usuario.Activo);
+
+        if (r.Ok) await Cargar();
+        else _error = r.Error;
+    }
+
+    private void Restablecer(Usuario usuario)
+    {
+        _restableciendo = usuario;
+        _passwordNueva = string.Empty;
+    }
+
+    private async Task GuardarPassword()
+    {
+        _ok = null;
+        _error = null;
+
+        if (_restableciendo == null) return;
+
+        if (_passwordNueva.Length < 6)
+        {
+            _error = "La contraseña debe tener al menos 6 caracteres.";
+            return;
+        }
+
+        var r = await Api.RestablecerPasswordAsync(_restableciendo.Id, _passwordNueva);
+
+        if (r.Ok)
+        {
+            _ok = $"Contraseña de {_restableciendo.Username} actualizada.";
+            _restableciendo = null;
+        }
+        else
+        {
+            _error = r.Error;
+        }
+    }
+}
